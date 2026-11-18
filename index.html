@@ -460,7 +460,6 @@ input[type="checkbox"] { accent-color: var(--accent) }
     } else {
       if (it.status === 'waiting') tags.push('<span class="tag num" title="等待他人">在等 ' + esc(it.waitingOn || '未填写') + (it.waitingSince ? ' · 自 ' + esc(shortDate(it.waitingSince)) : '') + '</span>');
       if (isStale(it)) tags.push('<span class="tag warn">久未更新</span>');
-      if (subs.length && doneSubs === subs.length) tags.push('<span class="tag ok">子任务已全部完成</span>');
       if (it.priorityPending) tags.push('<button type="button" class="tag ask" data-act="confirm-pri" data-id="' + esc(it.id) + '" title="点击确认这个优先级">优先级待确认</button>');
       if (it.categoryPending) tags.push('<button type="button" class="tag ask" data-act="confirm-cat" data-id="' + esc(it.id) + '" title="点击确认这个类别">类别待确认</button>');
     }
