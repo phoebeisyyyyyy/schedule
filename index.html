@@ -420,7 +420,7 @@ input[type="checkbox"] { accent-color: var(--accent) }
   }
   function spawnNext(it) {
     var next = {};
-    ['title', 'note', 'category', 'priority', 'kind', 'dueTime', 'dueTz', 'alsoTz', 'repeat'].forEach(function (k) { if (it[k] != null) next[k] = it[k]; });
+    ['title', 'short', 'note', 'category', 'priority', 'kind', 'dueTime', 'dueTz', 'alsoTz', 'repeat'].forEach(function (k) { if (it[k] != null) next[k] = it[k]; });
     next.status = 'todo'; next.due = advance(it.due || today(), it.repeat);
     next.subtasks = (it.subtasks || []).map(function (s) {
       var n = { id: s.id, title: s.title, status: 'todo' };
