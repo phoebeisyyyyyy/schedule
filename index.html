@@ -62,6 +62,9 @@ select.sel { border: 1px solid var(--hair2); background: var(--s2); border-radiu
 .nextone { font-size: 13px; color: var(--ink2); overflow-wrap: anywhere; margin-top: 2px }
 .nextone b { font-weight: 500; color: var(--ink) }
 .nextone .over { color: var(--red) } .nextone .soon { color: var(--orange) }
+.uplist { list-style: none; margin: 4px 0 0; padding: 0; font-size: 13px; font-weight: 500; color: var(--ink); line-height: 1.6 }
+.uplist li { display: flex; align-items: center; gap: 7px; overflow-wrap: anywhere }
+.uplist li::before { content: ""; width: 4px; height: 4px; background: var(--ink3); flex: none }
 .stat .v.red { color: var(--red) } .stat .v.orange { color: var(--orange) } .stat .v.zero { color: var(--ink4) }
 .next { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 13px }
 .next .d { white-space: nowrap }
@@ -230,6 +233,7 @@ input[type="checkbox"] { accent-color: var(--accent) }
   <form class="dlg" id="editor-form" method="dialog">
     <h3 id="ed-heading">新建事项</h3>
     <div class="field"><label for="f-title">标题</label><input class="inp" id="f-title" required maxlength="120"></div>
+    <div class="field"><label for="f-short">简称(显示在 Upcoming)</label><input class="inp" id="f-short" maxlength="20" placeholder="例如:LPA、meeting"></div>
     <div class="field"><label for="f-note">备注</label><textarea class="inp" id="f-note" rows="2" maxlength="500"></textarea></div>
     <div class="row2">
       <div class="field"><label for="f-cat">类别</label><select class="sel" id="f-cat"></select>
@@ -501,6 +505,8 @@ input[type="checkbox"] { accent-color: var(--accent) }
       return '<svg viewBox="0 0 3 5" shape-rendering="crispEdges" aria-hidden="true">' + out + '</svg>';
     }).join('');
   }
+  var UPCOMING_DAYS = 14;
+  function shortName(it) { return (it.short || '').trim() || (it.kind === 'event' ? 'meeting' : it.title); }
   function setStat(id, n, cls) { var el = $(id); el.textContent = n; el.className = 'v num ' + (n ? cls : 'zero'); }
   /* click a title or note to edit it in place; Enter or clicking away saves, Esc cancels */
   var inlineEditing = false;
@@ -542,17 +548,21 @@ input[type="checkbox"] { accent-color: var(--accent) }
     open.forEach(function (it) {
       if (it.priorityPending || it.categoryPending) nAsk++;
       if (it.priority === 'high') nPri++;
-      [it].concat(openSubs(it)).forEach(function (o, idx) {
+      var best = null;
+      [it].concat(openSubs(it)).forEach(function (o) {
         var d = dueInfo(o); if (!d) return;
         if (d.over) nOver++;
-        if (!(d.event && d.past)) dl.push({ d: d, title: o.title + (idx ? ' · ' + it.title : '') });
+        if (!(d.event && d.past) && d.days <= UPCOMING_DAYS && (!best || d.key < best)) best = d.key;
       });
+      if (!best && it.priority === 'high') best = '~';   /* undated but high priority: listed last */
+      if (best) dl.push({ key: best, label: shortName(it) });
     });
     setStat('s-over', nOver, 'red'); setStat('s-soon', nPri, 'orange'); setStat('s-ask', nAsk, '');
-    dl.sort(function (a, b) { return a.d.key < b.d.key ? -1 : a.d.key > b.d.key ? 1 : 0; });
-    var nx = dl[0];
-    $('s-next').innerHTML = nx ? '<div class="nextone"><b>' + esc(nx.title) + '</b><br><span class="num' + (nx.d.event ? '' : nx.d.over ? ' over' : nx.d.soon ? ' soon' : '') + '">' + esc(nx.d.when) + (nx.d.label ? ' · ' + esc(nx.d.label) : '') + '</span></div>'
-      : '<p class="muted">还没有带日期的事项</p>';
+    dl.sort(function (a, b) { return a.key < b.key ? -1 : a.key > b.key ? 1 : 0; });
+    var seen = {}, names = [];
+    dl.forEach(function (x) { var k = x.label.toLowerCase(); if (!seen[k]) { seen[k] = 1; names.push(x.label); } });
+    $('s-next').innerHTML = names.length ? '<ul class="uplist">' + names.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul>'
+      : '<p class="muted">近期没有安排</p>';
 
     var html = '';
     if (!items.length) html += '<div class="blank"><strong>还没有事项</strong>点右上角"新建",或者在对话里告诉 Claude,它会替你记到这里。</div>';
@@ -607,6 +617,7 @@ input[type="checkbox"] { accent-color: var(--accent) }
     $('ed-heading').textContent = it ? '编辑事项' : '新建事项';
     $('f-title').value = it ? it.title || '' : '';
     $('f-note').value = it ? it.note || '' : '';
+    $('f-short').value = it ? it.short || '' : '';
     fillSelect($('f-cat'), cats.concat([{ id: '__new', name: '＋ 新建类别…' }]), it ? it.category : (catId || (cats[0] && cats[0].id)));
     $('f-newcat').value = ''; $('f-newcat').hidden = $('f-cat').value !== '__new';
     $('f-status').value = it ? it.status || 'todo' : 'todo';
@@ -640,7 +651,7 @@ input[type="checkbox"] { accent-color: var(--accent) }
     }
     var status = $('f-status').value, time = $('f-time').value, due = $('f-due').value;
     var o = {
-      title: title, note: $('f-note').value.trim(), category: cat || null, categoryPending: false,
+      title: title, short: $('f-short').value.trim(), note: $('f-note').value.trim(), category: cat || null, categoryPending: false,
       status: status, priority: $('f-pri').value, priorityPending: $('f-pri-pending').checked,
       kind: $('f-kind').value, due: due || null, dueTime: due && time ? time : null, dueTz: due && time ? $('f-tz').value : null,
       alsoTz: Array.prototype.map.call($('f-also').querySelectorAll('input:checked'), function (x) { return x.value; }),
