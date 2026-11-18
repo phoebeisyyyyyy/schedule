@@ -80,10 +80,6 @@ select.sel { border: 1px solid var(--hair2); background: var(--s2); border-radiu
 .panel { border: 1px solid var(--hair); border-radius: 12px; overflow: hidden; background: var(--s1) }
 .ghead { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: var(--s2); border-top: 1px solid var(--hair); font-size: 13px; font-weight: 500 }
 .ghead:first-child { border-top: 0 }
-.ghead .cnt { color: var(--ink3); font-weight: 400 }
-.ghead .prog { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--ink3); font-weight: 400; font-size: 12px }
-.ghead .bar { width: 56px; height: 4px; background: var(--hair2); overflow: hidden }
-.ghead .bar i { display: block; height: 100%; background: var(--accent) }
 .icobtn { border: 0; background: transparent; padding: 4px; border-radius: 4px; color: var(--ink4); display: inline-grid; place-items: center }
 .icobtn:hover { background: var(--s3); color: var(--ink) }
 .linkbtn { background: none; border: 0; padding: 0; color: var(--ink3); font-size: 12px }
@@ -105,6 +101,13 @@ select.sel { border: 1px solid var(--hair2); background: var(--s2); border-radiu
 .n { border: 0; background: none; padding: 0; text-align: left; color: var(--ink3); font-size: 13px; overflow-wrap: anywhere }
 .n:hover { color: var(--ink2) }
 .t, .n { cursor: text }
+.pn { flex-basis: 100% }
+.pbar { flex-basis: 100%; display: flex; align-items: center; gap: 8px; margin-top: 5px }
+.cells { display: flex; gap: 2px }
+.pc { width: 10px; height: 10px; padding: 0; border: 0; border-radius: 0; background: var(--s3); box-shadow: inset 0 0 0 1px var(--hair2); cursor: pointer }
+.pc.on { background: var(--accent-hi); box-shadow: inset 0 -2px 0 var(--accent) }
+.pc:hover { box-shadow: inset 0 0 0 1px var(--accent-hi) }
+.pct { font-size: 12px; color: var(--ink2) }
 .inp.inline { flex: 1 1 220px; padding: 2px 6px; font-size: inherit }
 .main .icobtn { align-self: center }
 .subtog { border: 0; background: none; padding: 0 2px; color: var(--ink3); font-size: 12px; display: inline-flex; align-items: center; gap: 3px }
@@ -163,6 +166,7 @@ input[type="checkbox"] { accent-color: var(--accent) }
   .row { grid-template-columns: 16px 24px minmax(0, 1fr) auto }
   .row > .tags { grid-column: 3 / -1; grid-row: 2; justify-content: flex-start }
   .row.sub { padding-left: 62px }
+  .pc { width: 13px; height: 13px }
   .due .alt { display: block; font-size: 11px }
   .se-row { grid-template-columns: minmax(0, 1fr) auto }
   .se-row .se-title { grid-column: 1 / -1 }
@@ -235,6 +239,10 @@ input[type="checkbox"] { accent-color: var(--accent) }
       <div class="field"><label for="f-pri">优先级</label><select class="sel" id="f-pri">
         <option value="none">不标</option><option value="high">高</option><option value="mid">中</option><option value="low">低</option></select>
         <label class="hint"><input type="checkbox" id="f-pri-pending"> 待确认</label></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label for="f-prog">完成度</label><select class="sel" id="f-prog"></select></div>
+      <div class="field" style="grid-column: span 2"><label for="f-pnote">最新进展</label><input class="inp" id="f-pnote" maxlength="200" placeholder="例如:完成了文档处理"></div>
     </div>
     <div class="field" id="wait-field" hidden><label for="f-waiton">在等谁</label><input class="inp" id="f-waiton" maxlength="60" placeholder="例如:导师回复"></div>
     <div class="row2">
@@ -391,6 +399,7 @@ input[type="checkbox"] { accent-color: var(--accent) }
   function setStatus(it, status) {
     if (it.status === status) return;
     var patch = { status: status, doneAt: status === 'done' ? nowISO() : null };
+    if (status === 'done' && it.kind !== 'event') patch.progress = 100;
     if (status === 'waiting' && !it.waitingSince) patch.waitingSince = today();
     patchItem(it.id, patch);
     if (status === 'done' && it.repeat) spawnNext(it);
@@ -463,9 +472,26 @@ input[type="checkbox"] { accent-color: var(--accent) }
       '<span class="main"><button type="button" class="t" data-act="inline" data-field="title" data-id="' + esc(it.id) + '" title="点击修改标题' + (upd ? ' · ' + esc(upd) : '') + '">' + esc(it.title) + '</button>' +
       '<button type="button" class="icobtn" data-act="edit" data-id="' + esc(it.id) + '" title="编辑全部内容" aria-label="编辑全部内容">' + ico('edit', 'sm') + '</button>' +
       (subs.length && !archived ? '<button type="button" class="subtog num" data-act="toggle-subs" data-id="' + esc(it.id) + '" aria-expanded="' + !!open + '">' + ico(open ? 'down' : 'right', 'sm') + doneSubs + '/' + subs.length + '</button>' : '') +
-      (it.note ? '<button type="button" class="n" data-act="inline" data-field="note" data-id="' + esc(it.id) + '" title="点击修改备注">' + esc(it.note) + '</button>' : '') + '</span>' +
+      (it.note ? '<button type="button" class="n" data-act="inline" data-field="note" data-id="' + esc(it.id) + '" title="点击修改备注">' + esc(it.note) + '</button>' : '') +
+      (showProg(it, archived) ? progHtml(it) : '') + '</span>' +
       '<span class="tags">' + tags.join('') + '</span>' + dueCell(d, !archived) + '</li>' +
       (open ? subs.map(function (s) { return subHtml(it, s); }).join('') : '');
+  }
+  /* per-item progress: 10 pixel cells, 10% each; only tasks that have started */
+  function prog(it) { var v = Math.round((+it.progress || 0) / 10) * 10; return Math.max(0, Math.min(100, v)); }
+  function showProg(it, archived) { return !archived && it.kind !== 'event' && (prog(it) > 0 || it.status === 'doing' || !!it.progressNote); }
+  function progHtml(it) {
+    var v = prog(it), cells = '';
+    for (var i = 1; i <= 10; i++) cells += '<button type="button" class="pc' + (i * 10 <= v ? ' on' : '') + '" data-act="prog" data-id="' + esc(it.id) + '" data-v="' + i * 10 + '" aria-label="完成度设为 ' + i * 10 + '%"></button>';
+    var pd = it.progressAt ? shortDate(parts(new Date(it.progressAt), settings.tz).date) + ' · ' : '';
+    return (it.progressNote ? '<button type="button" class="n pn" data-act="inline" data-field="progressNote" data-id="' + esc(it.id) + '" title="最新进展,点击修改">' + esc(pd + it.progressNote) + '</button>' : '') +
+      '<span class="pbar"><span class="cells" role="group" aria-label="完成度">' + cells + '</span><span class="pct num">' + v + '%</span></span>';
+  }
+  function setProg(it, v) {
+    v = prog(it) === v ? v - 10 : v;
+    var patch = { progress: v };
+    if (v > 0 && it.status === 'todo') patch.status = 'doing';
+    patchItem(it.id, patch);
   }
   /* 3x5 pixel digits for the summary numbers */
   var DIGITS = { 0: '####.##.##.####', 1: '.#.##..#..#.###', 2: '###..#####..###', 3: '###..####..####', 4: '#.##.####..#..#', 5: '####..###..####', 6: '####..####.####', 7: '###..#..#..#..#', 8: '####.#####.####', 9: '####.####..####' };
@@ -481,11 +507,11 @@ input[type="checkbox"] { accent-color: var(--accent) }
   var inlineEditing = false;
   function startInline(el) {
     var it = byId(el.dataset.id); if (!it) return;
-    var isNote = el.dataset.field === 'note', sid = el.dataset.sid;
+    var field = el.dataset.field, isNote = field === 'note' || field === 'progressNote', sid = el.dataset.sid;
     var sub = sid ? (it.subtasks || []).find(function (s) { return s.id === sid; }) : null;
-    var cur = isNote ? (it.note || '') : sub ? sub.title : it.title;
+    var cur = isNote ? (it[field] || '') : sub ? sub.title : it.title;
     var inp = document.createElement('input');
-    inp.className = 'inp inline'; inp.value = cur; inp.maxLength = isNote ? 500 : 120; inp.setAttribute('aria-label', isNote ? '备注' : '标题');
+    inp.className = 'inp inline'; inp.value = cur; inp.maxLength = isNote ? 500 : 120; inp.setAttribute('aria-label', field === 'progressNote' ? '最新进展' : isNote ? '备注' : '标题');
     inlineEditing = true; el.replaceWith(inp); inp.focus(); inp.select();
     var finished = false;
     function finish(save) {
@@ -493,6 +519,7 @@ input[type="checkbox"] { accent-color: var(--accent) }
       var v = inp.value.trim();
       if (save && v !== cur && (v || isNote)) {
         if (sub) patchItem(it.id, { subtasks: it.subtasks.map(function (s) { return s.id === sid ? Object.assign({}, s, { title: v, updatedAt: nowISO() }) : s; }) });
+        else if (field === 'progressNote') patchItem(it.id, { progressNote: v, progressAt: nowISO() });
         else patchItem(it.id, isNote ? { note: v } : { title: v });
       }
       render();
@@ -532,11 +559,10 @@ input[type="checkbox"] { accent-color: var(--accent) }
     if (!items.length) html += '<div class="blank"><strong>还没有事项</strong>点右上角"新建",或者在对话里告诉 Claude,它会替你记到这里。</div>';
     groups.forEach(function (g) {
       var all = items.filter(function (i) { return inGroup(g, i); }), mine = sortItems(open.filter(function (i) { return inGroup(g, i); }));
-      var dn = all.length - mine.length;
-      html += '<div class="ghead"><span>' + esc(g.name) + '</span><span class="cnt num">' + mine.length + '</span>' +
+      html += '<div class="ghead"><span>' + esc(g.name) + '</span>' +
         (g.real ? '<button type="button" class="icobtn" data-act="new-in" data-id="' + esc(g.id) + '" title="在这一类里新建" aria-label="在' + esc(g.name) + '里新建">' + ico('plus', 'sm') + '</button>' : '') +
         (g.real && !all.length ? '<button type="button" class="linkbtn" data-act="cat-del" data-id="' + esc(g.id) + '">删除类别</button>' : '') +
-        '<span class="prog num">' + dn + '/' + all.length + ' 已完成<span class="bar"><i style="width:' + (all.length ? Math.round(dn / all.length * 100) : 0) + '%"></i></span></span></div>' +
+        '</div>' +
         '<ul class="rows">' + (mine.length ? mine.map(function (i) { return itemHtml(i, false); }).join('') : '<li class="row empty">' + (all.length ? '这一类都完成了。' : '这一类还没有事项。') + '</li>') + '</ul>';
     });
     $('groups').innerHTML = html;
@@ -587,6 +613,10 @@ input[type="checkbox"] { accent-color: var(--accent) }
     $('f-status').value = it ? it.status || 'todo' : 'todo';
     $('f-pri').value = it && PRI[it.priority] ? it.priority : 'none';
     $('f-pri-pending').checked = !!(it && it.priorityPending);
+    var pv = it ? prog(it) : 0, po = '';
+    for (var k = 0; k <= 100; k += 10) po += '<option value="' + k + '"' + (k === pv ? ' selected' : '') + '>' + k + '%</option>';
+    $('f-prog').innerHTML = po;
+    $('f-pnote').value = it ? it.progressNote || '' : '';
     $('f-waiton').value = it ? it.waitingOn || '' : '';
     $('wait-field').hidden = $('f-status').value !== 'waiting';
     $('f-kind').value = it && it.kind === 'event' ? 'event' : 'task';
@@ -616,6 +646,7 @@ input[type="checkbox"] { accent-color: var(--accent) }
       kind: $('f-kind').value, due: due || null, dueTime: due && time ? time : null, dueTz: due && time ? $('f-tz').value : null,
       alsoTz: Array.prototype.map.call($('f-also').querySelectorAll('input:checked'), function (x) { return x.value; }),
       waitingOn: $('f-waiton').value.trim(), repeat: $('f-repeat').value || null,
+      progress: +$('f-prog').value, progressNote: $('f-pnote').value.trim(),
       subtasks: editing.subs.filter(function (s) { return (s.title || '').trim(); }).map(function (s) {
         var n = Object.assign({}, s, { title: s.title.trim(), status: s.status || 'todo', due: s.due || null });
         if (!n.id) n.id = rid('s-');
@@ -625,6 +656,9 @@ input[type="checkbox"] { accent-color: var(--accent) }
       updatedAt: nowISO()
     };
     var wasDone = old && old.status === 'done';
+    if (o.progressNote !== ((old && old.progressNote) || '')) o.progressAt = o.progressNote ? nowISO() : null;
+    if (status === 'done' && !wasDone && o.kind !== 'event') o.progress = 100;
+    if (o.progress > 0 && status === 'todo') o.status = status = 'doing';
     o.doneAt = status === 'done' ? (wasDone && old.doneAt ? old.doneAt : nowISO()) : null;
     o.waitingSince = status === 'waiting' ? ((old && old.waitingSince) || today()) : null;
     if (old) queue(function () { return db.doc('items/' + old.id).update(o); });
@@ -654,6 +688,7 @@ input[type="checkbox"] { accent-color: var(--accent) }
     var act = el.dataset.act, it = byId(el.dataset.id);
     if (act === 'st-open') openMenu(el);
     else if (act === 'inline') startInline(el);
+    else if (act === 'prog' && it) setProg(it, +el.dataset.v);
     else if (act === 'edit' && it) openEditor(it);
     else if (act === 'new-in') openEditor(null, el.dataset.id);
     else if (act === 'toggle-subs') { if (collapsed.has(el.dataset.id)) collapsed.delete(el.dataset.id); else collapsed.add(el.dataset.id); render(); }
