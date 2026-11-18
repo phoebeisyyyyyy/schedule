@@ -205,7 +205,7 @@ input[type="checkbox"] { accent-color: var(--accent) }
   <div class="stats" id="stats">
     <div class="stat"><div class="k">Post Due</div><div class="v zero num" id="s-over">–</div></div>
     <div class="stat"><div class="k">Priority</div><div class="v zero num" id="s-soon">–</div></div>
-    <div class="stat"><div class="k">Pending</div><div class="v zero num" id="s-ask">–</div></div>
+    <div class="stat"><div class="k">This Week</div><div class="v zero num" id="s-week">–</div></div>
     <div class="stat"><div class="k">Upcoming</div><div id="s-next"><p class="muted">正在加载…</p></div></div>
   </div>
 
@@ -257,6 +257,7 @@ input[type="checkbox"] { accent-color: var(--accent) }
       <div class="field"><label for="f-kind">类型</label><select class="sel" id="f-kind">
         <option value="task">任务(有截止时间)</option><option value="event">会议(固定时间)</option></select></div>
       <div class="field"><label for="f-due">日期</label><input class="inp" type="date" id="f-due"></div>
+      <div class="field"><label for="f-dueend">到(日期未定时填)</label><input class="inp" type="date" id="f-dueend"></div>
       <div class="field"><label for="f-time">时刻(可空)</label><input class="inp" type="time" id="f-time"></div>
       <div class="field"><label for="f-tz">这个时刻的时区</label><select class="sel" id="f-tz"></select></div>
     </div>
@@ -372,8 +373,12 @@ input[type="checkbox"] { accent-color: var(--accent) }
       r.date = p.date; r.time = p.time; past = inst.getTime() < Date.now();
       var others = [src].concat(o.alsoTz || []).filter(function (z, i, arr) { return z !== main && arr.indexOf(z) === i; });
       r.extras = others.map(function (z) { var q = parts(inst, z); return shortDate(q.date) + ' ' + time12(q.time) + ' ' + tzAb(z); });
-    } else { r.date = o.due; r.time = ''; past = o.due < td; }
-    r.when = shortDate(r.date) + ' ' + (r.time ? time12(r.time) : wd(r.date));
+    } else {
+      r.date = o.due; r.time = ''; r.end = o.dueEnd && o.dueEnd > o.due ? o.dueEnd : null;
+      past = (r.end || o.due) < td;
+      if (r.end) r.extras = ['时间待定'];
+    }
+    r.when = r.end ? shortDate(r.date) + '–' + shortDate(r.end) : shortDate(r.date) + ' ' + (r.time ? time12(r.time) : wd(r.date));
     r.days = diffDays(r.date, td);
     r.past = past; r.over = past && !r.event;
     r.soon = !past && r.days <= settings.soonDays;
@@ -549,22 +554,24 @@ input[type="checkbox"] { accent-color: var(--accent) }
     if (items.some(function (i) { return !known[i.category]; })) groups.push({ id: null, name: '未分类', real: false });
     var inGroup = function (g, i) { return g.real ? i.category === g.id : !known[i.category]; };
 
-    var nOver = 0, nPri = 0, nAsk = 0, dl = [];
+    var td0 = today(), mon = addDays(td0, -((new Date(wallMs(td0)).getUTCDay() + 6) % 7)), sun = addDays(mon, 6);
+    var nOver = 0, nPri = 0, nWeek = 0, dl = [];
     open.forEach(function (it) {
-      if (it.priorityPending || it.categoryPending) nAsk++;
       if (it.priority === 'high') nPri++;
       [it].concat(openSubs(it)).forEach(function (o) {
         var d = dueInfo(o); if (!d) return;
         if (d.over) nOver++;
-        if (!d.past) dl.push({ d: d, label: shortName(it) });
+        /* This Week: Monday-Sunday of the current week; each open item and open subtask counts once */
+        if (!(d.event && d.past) && d.date <= sun && (d.end || d.date) >= mon) nWeek++;
+        if (!d.past) { var eff = d.date < td0 ? td0 : d.date; dl.push({ d: d, day: eff, key: eff + ' ' + (d.time || '99:99'), label: shortName(it) }); }
       });
     });
-    setStat('s-over', nOver, 'red'); setStat('s-soon', nPri, 'orange'); setStat('s-ask', nAsk, '');
+    setStat('s-over', nOver, 'red'); setStat('s-soon', nPri, 'orange'); setStat('s-week', nWeek, '');
     /* Upcoming: only the nearest date; its items' short names, then that date */
-    dl.sort(function (a, b) { return a.d.key < b.d.key ? -1 : a.d.key > b.d.key ? 1 : 0; });
-    var day = dl.length ? dl[0].d.date : null, seen = {}, ups = [];
+    dl.sort(function (a, b) { return a.key < b.key ? -1 : a.key > b.key ? 1 : 0; });
+    var day = dl.length ? dl[0].day : null, seen = {}, ups = [];
     dl.forEach(function (x) {
-      if (x.d.date !== day) return;
+      if (x.day !== day) return;
       var k = x.label.toLowerCase() + '|' + x.d.time; if (seen[k]) return; seen[k] = 1;
       ups.push('<li>' + esc(x.label) + (x.d.time ? '<span class="uptime num">' + esc(time12(x.d.time)) + '</span>' : '') + '</li>');
     });
@@ -639,6 +646,7 @@ input[type="checkbox"] { accent-color: var(--accent) }
     $('wait-field').hidden = $('f-status').value !== 'waiting';
     $('f-kind').value = it && it.kind === 'event' ? 'event' : 'task';
     $('f-due').value = it ? it.due || '' : '';
+    $('f-dueend').value = it ? it.dueEnd || '' : '';
     $('f-time').value = it ? it.dueTime || '' : '';
     fillSelect($('f-tz'), TZS, (it && it.dueTz) || settings.tz);
     var also = (it && it.alsoTz) || [];
@@ -657,11 +665,12 @@ input[type="checkbox"] { accent-color: var(--accent) }
       var nm = $('f-newcat').value.trim(); if (!nm) { toast('请填写新类别的名称'); return; }
       cat = addCategory(nm);
     }
-    var status = $('f-status').value, time = $('f-time').value, due = $('f-due').value;
+    var status = $('f-status').value, time = $('f-time').value, due = $('f-due').value, dueEnd = $('f-dueend').value;
     var o = {
       title: title, short: $('f-short').value.trim(), note: $('f-note').value.trim(), category: cat || null, categoryPending: false,
       status: status, priority: $('f-pri').value, priorityPending: $('f-pri-pending').checked,
       kind: $('f-kind').value, due: due || null, dueTime: due && time ? time : null, dueTz: due && time ? $('f-tz').value : null,
+      dueEnd: due && !time && dueEnd > due ? dueEnd : null,
       alsoTz: Array.prototype.map.call($('f-also').querySelectorAll('input:checked'), function (x) { return x.value; }),
       waitingOn: $('f-waiton').value.trim(), repeat: $('f-repeat').value || null,
       progress: +$('f-prog').value, progressNote: $('f-pnote').value.trim(),
