@@ -6,11 +6,11 @@
 <meta name="robots" content="noindex,nofollow">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="日程表">
+<meta name="apple-mobile-web-app-title" content="PS Schedule">
 <meta name="theme-color" content="#08090a">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" href="favicon.png">
-<title>日程表</title>
+<title>PS Schedule</title>
 <style>html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
 </head>
 <body>
@@ -44,6 +44,8 @@ button { cursor: pointer }
 .logo { color: var(--accent-hi); display: block }
 .logo .px { width: 32px; height: 32px }
 .head h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -.4px; line-height: 1.2 }
+.head h1 .t { font-weight: inherit; letter-spacing: inherit; cursor: text }
+.head h1 .inp.inline { font-weight: 600; width: 220px }
 .head .sub { color: var(--ink3); font-size: 13px }
 .acts { display: flex; gap: 8px; align-items: center }
 .btn { border: 1px solid var(--hair2); background: var(--s2); border-radius: 6px; padding: 5px 10px; font-size: 13px; font-weight: 500; color: var(--ink2); display: inline-flex; align-items: center; gap: 6px }
@@ -178,7 +180,7 @@ input[type="checkbox"] { accent-color: var(--accent) }
 
 <div class="wrap">
   <header class="head">
-    <div class="brand"><span class="logo" id="logo"></span><div><h1>日程表</h1><div class="sub num" id="today"></div></div></div>
+    <div class="brand"><span class="logo" id="logo"></span><div><h1><button type="button" class="t" id="ttl" title="点击修改名称">PS Schedule</button></h1><div class="sub num" id="today"></div></div></div>
     <div class="acts">
       <select class="sel" id="tz-select" aria-label="主时区"></select>
       <button class="btn primary" id="btn-new" type="button">＋ 新建</button>
@@ -319,7 +321,8 @@ input[type="checkbox"] { accent-color: var(--accent) }
   }
 
   var db = null, items = [], cats = [];
-  var settings = { tz: 'Asia/Shanghai', soonDays: 3, staleDays: 14 };
+  var settings = { tz: 'Asia/Shanghai', soonDays: 3, staleDays: 14, title: 'PS Schedule' };
+  function saveSettings() { var s = { tz: settings.tz, soonDays: settings.soonDays, staleDays: settings.staleDays, title: settings.title }; queue(function () { return db.doc('meta/settings').set(s); }); }
   var got = { items: false, cats: false };
   var collapsed = new Set();
   var editing = null, menuFor = null;
@@ -534,6 +537,7 @@ input[type="checkbox"] { accent-color: var(--accent) }
   }
   function render() {
     if (inlineEditing) return;
+    $('ttl').textContent = settings.title; document.title = settings.title;
     $('today').textContent = fmtDate(today()) + ' · ' + tzName(settings.tz) + '时间';
     if ($('tz-select').value !== settings.tz) $('tz-select').value = settings.tz;
     if (!got.items || !got.cats) return;
@@ -715,9 +719,24 @@ input[type="checkbox"] { accent-color: var(--accent) }
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('stmenu').hidden) closeMenu(); });
   $('newcat-name').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); document.querySelector('[data-act="cat-add"]').click(); } });
   $('btn-new').addEventListener('click', function () { if (!db) { toast('数据还没连上,暂时不能新建'); return; } openEditor(null); });
+  $('ttl').addEventListener('click', function () {
+    if (!db) { toast('数据还没连上,暂时不能修改'); return; }
+    var el = this, cur = settings.title, inp = document.createElement('input');
+    inp.className = 'inp inline'; inp.value = cur; inp.maxLength = 40; inp.setAttribute('aria-label', '页面名称');
+    inlineEditing = true; el.hidden = true; el.after(inp); inp.focus(); inp.select();
+    var finished = false;
+    function finish(save) {
+      if (finished) return; finished = true; inlineEditing = false;
+      var v = inp.value.trim(); inp.remove(); el.hidden = false;
+      if (save && v && v !== cur) { settings.title = v; saveSettings(); }
+      render();
+    }
+    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') { e.stopPropagation(); finish(false); } });
+    inp.addEventListener('blur', function () { finish(true); });
+  });
   $('tz-select').addEventListener('change', function () {
     settings.tz = this.value; render();
-    if (db) { var s = { tz: settings.tz, soonDays: settings.soonDays, staleDays: settings.staleDays }; queue(function () { return db.doc('meta/settings').set(s); }); }
+    if (db) saveSettings();
   });
   $('f-cat').addEventListener('change', function () { $('f-newcat').hidden = this.value !== '__new'; if (!$('f-newcat').hidden) $('f-newcat').focus(); });
   $('f-status').addEventListener('change', function () { $('wait-field').hidden = this.value !== 'waiting'; });
@@ -864,7 +883,7 @@ input[type="checkbox"] { accent-color: var(--accent) }
       cats = snap.docs.map(function (x) { return Object.assign({ id: x.id }, x.data()); }).sort(function (a, b) { return (a.order || 0) - (b.order || 0); }); got.cats = true; render();
     }, fail);
     db.doc('meta/settings').onSnapshot(function (snap) {
-      if (snap.exists) { var s = snap.data(); if (s.tz) settings.tz = s.tz; if (s.soonDays != null) settings.soonDays = s.soonDays; if (s.staleDays != null) settings.staleDays = s.staleDays; render(); }
+      if (snap.exists) { var s = snap.data(); if (s.tz) settings.tz = s.tz; if (s.soonDays != null) settings.soonDays = s.soonDays; if (s.staleDays != null) settings.staleDays = s.staleDays; if (s.title) settings.title = s.title; render(); }
     }, function () {});
   });
 })();
